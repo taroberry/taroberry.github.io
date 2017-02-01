@@ -1,7 +1,7 @@
-title: Taroberry.GitHub.io
-description: taroberry的博客
+title: taroberry.gitHub.io
+description: taroberry
 google_analytics: 
-show_downloads: true
+show_downloads: false
 theme: jekyll-theme-minimal
 
 gems:
