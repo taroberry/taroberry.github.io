@@ -1,8 +1,8 @@
 ---
 layout: post
-title:  mysql在BI系统的科学用法
+title:  mysql在大数据平台里的科学用法
 category: data_ops
-description: mysql是互联网公司主流的关系型数据库，BI系统也不例外，很多公司都使用mysql存储统计类数据。但是，天生娇贵的mysql需要扬长避短，科学使用。
+description: mysql是互联网公司主流的关系型数据库，BI系统也不例外，很多公司都使用hadoop做离线数据分析，而使用mysql存储统计类数据。但是，天生娇贵的mysql需要扬长避短，科学使用。
 ---
 
 报表数据的存储，有很多种选择，除了最常见的关系型数据库，es、hbase等其他存储方式也有成功案例。在关系型数据库里，互联网公司用的最多的就是mysql。
