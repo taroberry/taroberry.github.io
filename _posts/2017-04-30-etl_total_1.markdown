@@ -1,0 +1,54 @@
+---
+layout: post
+title:  ETL系统在有赞的演进
+category: site
+description: 结合有赞的大数据应用的实际情况，描述了ETL工具在有赞的发展历程
+---
+
+## 当使用了hive
+有赞的数据源有两部分，日志和业务数据。业务数据库用的是mysql，在2015年之前使用了读写分离的架构。为了解决日志和业务数据的统一分析，以及数据量和扩展性的考虑，在2014年用上了hive，这时就需要把mysql的数据同步到hive。
+
+我们使用了sqoop，只有mysql侧的extract，以及hive侧的load，数据流就是mysql -> sqoop -> hive。hive的计算结果也会写回到mysql，这时就是hive -> sqoop -> mysql。
+
+
+## 当mysql水平拆分
+在2015年上半年，我们的部分mysql数据库做了水平拆分，很多大的业务表被拆成了1024个分库。当时列举有这么些备选方案：
+
+```
+1. 监听binlog，写hdfs，让hive查询，要解决mysql的update操作
+    方案1: 文件先本地缓存，然后做主键去重预处理，再每天一次批量导入hdfs;
+    方案2: 直接写hdfs，定时flush，这样要hive查询语句手工应对mysql update操作;
+2. 监听binlog，写hbase
+    方案3: hive over hbase，hive和hbase直接整合，但性能是个问题，会慢5-10倍;
+    方案4: hive over hdfs，先汇聚到hbase，再把hbase数据批量导出成hive能识别的格式;
+3. 沿用当前方案
+    方案5: 继续mysql->sqoop->hive，代码改动量最小，但不是真正的大数据解决方案
+    方案6：继续mysql->其他ETL工具->hive，datax可以做到
+```
+最终选择了方案4，binlog消息是通过canal生成，使用storm消费，于是数据流就变成了mysql -> canal -> storm -> hbase -> hive，这个方案已经跑了2年且非常稳定。当然，原有的sqoop方案，对于没有拆分的表还在使用。
+
+对于大表，使用方案4是很合适的，不过由于流程比较长，操作起来还是比较繁琐的，特别是在增加一张新表的时候。其实对于小表，方案6是个好选择，而sqoop基于mapreduce，太重了，原生sqoop不适合水平分库的场景。
+
+## 更合理的sql
+同样在2015年，我们的mysql运维更严格了，其中很重要的一点是慢sql监控以及sql killer，执行超过x秒的sql会被自动kill掉，这对于批处理的ETL场景，其实挺困难的。
+
+解决这个问题，有两个思路：
+
+* 开特例，数据同步的sql不被kill
+* 解决慢sql
+
+最终，我们选择了解决慢sql，一来不想有特例，二来慢sql总是有害的，具体的
+
+* select/delete: 小批量、多批次、低并发，例如select ... from tb where id>? order by id asc limit 1000，加了limit每次只查少量数据，order by id asc能走聚簇索引，会很快
+* insert: 类似python executemany的形式，并且积累到一定量commit
+* update: 尽量避免
+
+## 数据仓库的ETL工具
+上面描述几点，只能说是数据同步，还谈不上ETL。在2016年，我们开始构建真正的数据仓库，开始有更丰富的元数据，与偶这么些变化：
+
+* 可配置的校验和脏数据处理，如唯一性、枚举值、非空、范围
+* 运行时数据的统计，比如ETL任务耗时、结束时间、读写数据行数
+* schema一致与不一致，比如源和目标的字段、类型的一致性，而表名会因为数据仓库的命名规范而修改
+
+最终，结合了上面所有的需求，我们抛弃了sqoop，选择了datax并修改，目前正在路上。datax提供了脏数据、数据统计方面的基础能力，只要在datax上做数据仓库业务逻辑的封装，很容易达成我们的目标。而且datax的读写插件扩展能力，可以很方便得到新数据源的ETL能力，比如csv/excel。
+
